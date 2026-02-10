@@ -24,10 +24,11 @@ android {
         applicationId = "com.streaming.aggregator.streaming_app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        multiDexEnabled = true
     }
 
     buildTypes {
@@ -39,6 +40,15 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
         }
+    }
+
+    dependencies {
+        val media3Version = "1.2.0"
+        implementation("androidx.media3:media3-exoplayer:$media3Version")
+        implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
+        implementation("androidx.media3:media3-datasource:$media3Version")
+        implementation("androidx.media3:media3-common:$media3Version")
+        implementation("androidx.media3:media3-database:$media3Version")
     }
 }
 

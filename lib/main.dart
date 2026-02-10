@@ -35,14 +35,7 @@ class MyApp extends ConsumerStatefulWidget {
 }
 
 class _MyAppState extends ConsumerState<MyApp> {
-  @override
-  void initState() {
-    super.initState();
-    // Initialize ad service with 5-minute delay
-    Future.microtask(() {
-      ref.read(adServiceProvider).initialize();
-    });
-  }
+
 
   @override
   Widget build(BuildContext context) {

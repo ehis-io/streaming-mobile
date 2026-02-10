@@ -7,7 +7,6 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../models/media.dart';
 import '../../../models/stream_info.dart';
 import '../../../core/network/api_client.dart';
-import '../../../core/ads/clickadu_ad_manager.dart';
 import '../../../core/services/download_service.dart';
 import 'webview_player_screen.dart';
 
@@ -50,10 +49,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   int? _currentEpisode;
   bool _isLoadingEpisode = false;
 
-  // Ad State
-  bool _showAd = true;
-  ClickaduAdManager? _adManager;
-
   StreamInfo get currentStream => _extractedStream ?? _currentStreams[_currentIndex];
 
   bool get isSeries => widget.media?.mediaType == MediaType.tv || (widget.season != null && widget.episode != null);
@@ -69,32 +64,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     _currentSeason = widget.season;
     _currentEpisode = widget.episode;
 
-    _initializePreRollAd();
-  }
-
-  void _initializePreRollAd() {
-    _showAd = false; // Disable ads for now
-    
-    // Skip ad manager initialization and start content directly
+    // Initialize player directly
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) initializePlayer();
     });
-  }
-
-  void _startContentPlayback() {
-    if (!mounted) return;
-    setState(() {
-      _showAd = false;
-      _adManager?.dispose();
-      _adManager = null;
-    });
-
-    if (_currentIndex < _currentStreams.length) {
-      // Small delay to ensure clean UI transition
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (mounted) initializePlayer();
-      });
-    }
   }
 
   Future<void> _disposeControllers() async {
@@ -126,11 +99,50 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       debugPrint('Initializing player for stream index: $_currentIndex, url: ${currentStream.url}');
 
       if (currentStream.isEmbed) {
-        setState(() {
-          _isSwitching = false;
-        });
+        if (!mounted) return;
+        
+        final result = await Navigator.push<String>(
+          context,
+          MaterialPageRoute(
+            builder: (context) => WebViewPlayerScreen(
+              stream: currentStream,
+              onNextServer: () => Navigator.pop(context, 'NEXT_SERVER'),
+              onNextEpisode: isSeries ? () {
+                Navigator.pop(context, 'NEXT_EPISODE');
+              } : null,
+              onPrevEpisode: (isSeries && _currentEpisode != null && _currentEpisode! > 1) ? () {
+                Navigator.pop(context, 'PREV_EPISODE');
+              } : null,
+            ),
+          ),
+        );
+
+        if (!mounted) return;
+
+        if (result == 'NEXT_SERVER') {
+          _tryNextStream('Manual server change');
+        } else if (result == 'NEXT_EPISODE') {
+          _onNextEpisode();
+        } else if (result == 'PREV_EPISODE') {
+          _onPrevEpisode();
+        } else if (result != null && result.startsWith('http')) {
+          _onStreamExtracted(result);
+        } else {
+          // If null, user probably clicked back or it's a timeout they exited
+          setState(() {
+            _isSwitching = false;
+          });
+          if (_extractedStream == null && _videoPlayerController == null) {
+             Navigator.pop(context);
+          }
+        }
         return;
       }
+
+      // Add extra delay to allow WebView surface to be destroyed completely
+      // This helps prevent ImageReader buffer exhaustion on some devices
+      // Increased to 3s for maximum safety on Infinix hardware
+      await Future.delayed(const Duration(milliseconds: 3000));
 
       final controller = VideoPlayerController.networkUrl(
         Uri.parse(currentStream.url),
@@ -272,6 +284,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     final taskId = await downloadService.downloadFile(
       url: stream.url,
       fileName: filename,
+      referer: stream.headers?['Referer'],
     );
     
     if (mounted) {
@@ -374,6 +387,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
         quality: 'Auto',
         url: url,
         isM3U8: url.contains('.m3u8'),
+        headers: {
+          'Referer': currentStream.url, // currentStream is the embed URL
+          'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+        },
       );
     });
     initializePlayer();
@@ -382,7 +399,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   @override
   void dispose() {
     WakelockPlus.disable();
-    _adManager?.dispose(); // Dispose Ad Manager
     _disposeControllers();
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
@@ -392,33 +408,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // While Ad is active (browser open), show black screen with loader
-    if (_showAd) {
-      return Scaffold(
-        backgroundColor: Colors.black,
-        body: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(color: Colors.red),
-              SizedBox(height: 16),
-              Text('Loading Content...', style: TextStyle(color: Colors.white)),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (currentStream.isEmbed) {
-      return WebViewPlayerScreen(
-        stream: currentStream,
-        onStreamExtracted: _onStreamExtracted,
-        onNextServer: () => _tryNextStream('Manual skip'),
-        onNextEpisode: isSeries ? _onNextEpisode : null,
-        onPrevEpisode: (isSeries && _currentEpisode != null && _currentEpisode! > 1) ? _onPrevEpisode : null,
-      );
-    }
-
     if (_isError) {
       return Scaffold(
         backgroundColor: Colors.black,

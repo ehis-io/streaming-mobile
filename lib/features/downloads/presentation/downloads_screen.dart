@@ -5,6 +5,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/download_service.dart';
+import '../../../core/services/hls_download_service.dart';
+
+class GenericTask {
+  final String taskId;
+  final String filename;
+  final DownloadTaskStatus status;
+  final int progress;
+  final bool isHls;
+
+  GenericTask({
+    required this.taskId,
+    required this.filename,
+    required this.status,
+    required this.progress,
+    this.isHls = false,
+  });
+}
 
 class DownloadsScreen extends ConsumerStatefulWidget {
   const DownloadsScreen({super.key});
@@ -14,7 +31,7 @@ class DownloadsScreen extends ConsumerStatefulWidget {
 }
 
 class _DownloadsScreenState extends ConsumerState<DownloadsScreen> {
-  List<DownloadTask> _tasks = [];
+  List<GenericTask> _tasks = [];
   late ReceivePort _port;
 
   @override
@@ -22,6 +39,16 @@ class _DownloadsScreenState extends ConsumerState<DownloadsScreen> {
     super.initState();
     _bindBackgroundIsolate();
     FlutterDownloader.registerCallback(DownloadService.downloadCallback);
+    
+    // Also listen to HLS updates
+    ref.read(hlsDownloadServiceProvider).addListener(_onHlsUpdate);
+    
+    _loadTasks();
+  }
+
+  void _onHlsUpdate(Map<String, dynamic> data) {
+    // For now, just reload all tasks to get the latest native state
+    // We could optimize this by updating local task object
     _loadTasks();
   }
 
@@ -67,36 +94,90 @@ class _DownloadsScreenState extends ConsumerState<DownloadsScreen> {
   }
 
   Future<void> _loadTasks() async {
-    final tasks = await FlutterDownloader.loadTasks();
+    final fdTasks = await FlutterDownloader.loadTasks() ?? [];
+    final hlsTasks = await ref.read(hlsDownloadServiceProvider).getTasks();
+    
+    final List<GenericTask> merged = [];
+    
+    // Add standard tasks
+    for (var t in fdTasks) {
+      merged.add(GenericTask(
+        taskId: t.taskId,
+        filename: t.filename ?? 'Unknown',
+        status: t.status,
+        progress: t.progress,
+      ));
+    }
+    
+    // Add HLS tasks
+    for (var t in hlsTasks) {
+      DownloadTaskStatus status;
+      switch (t['status']) {
+        case 'DOWNLOADING': status = DownloadTaskStatus.running; break;
+        case 'COMPLETED': status = DownloadTaskStatus.complete; break;
+        case 'FAILED': status = DownloadTaskStatus.failed; break;
+        case 'PAUSED': status = DownloadTaskStatus.paused; break;
+        default: status = DownloadTaskStatus.enqueued;
+      }
+      
+      merged.add(GenericTask(
+        taskId: t['id'],
+        filename: 'HLS Download', // We could pass filenames via native side later
+        status: status,
+        progress: t['progress'],
+        isHls: true,
+      ));
+    }
+
     if (mounted) {
       setState(() {
-        _tasks = tasks ?? [];
+        _tasks = merged;
       });
     }
   }
 
   // Action handlers
-  Future<void> _pauseDownload(String taskId) async {
-    await FlutterDownloader.pause(taskId: taskId);
+  Future<void> _pauseDownload(GenericTask task) async {
+    if (task.isHls) {
+      // HLS pause not implemented in native yet, but we could add it
+    } else {
+      await FlutterDownloader.pause(taskId: task.taskId);
+    }
     _loadTasks();
   }
 
-  Future<void> _resumeDownload(String taskId) async {
-    await FlutterDownloader.resume(taskId: taskId);
+  Future<void> _resumeDownload(GenericTask task) async {
+    if (task.isHls) {
+      // HLS resume not implemented in native yet
+    } else {
+      await FlutterDownloader.resume(taskId: task.taskId);
+    }
     _loadTasks();
   }
 
-  Future<void> _retryDownload(String taskId) async {
-    await FlutterDownloader.retry(taskId: taskId);
+  Future<void> _retryDownload(GenericTask task) async {
+    if (task.isHls) {
+       // Retry by re-starting?
+    } else {
+       await FlutterDownloader.retry(taskId: task.taskId);
+    }
     _loadTasks();
   }
   
-  Future<void> _openDownload(String taskId) async {
-    await FlutterDownloader.open(taskId: taskId);
+  Future<void> _openDownload(GenericTask task) async {
+    if (task.isHls) {
+       // Open HLS in player?
+    } else {
+       await FlutterDownloader.open(taskId: task.taskId);
+    }
   }
 
-  Future<void> _deleteDownload(String taskId) async {
-    await FlutterDownloader.remove(taskId: taskId, shouldDeleteContent: true);
+  Future<void> _deleteDownload(GenericTask task) async {
+    if (task.isHls) {
+       await ref.read(hlsDownloadServiceProvider).cancelDownload(task.taskId);
+    } else {
+       await FlutterDownloader.remove(taskId: task.taskId, shouldDeleteContent: true);
+    }
     _loadTasks();
   }
 
@@ -130,7 +211,7 @@ class _DownloadsScreenState extends ConsumerState<DownloadsScreen> {
     );
   }
 
-  Widget _buildTaskItem(DownloadTask task) {
+  Widget _buildTaskItem(GenericTask task) {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       color: Colors.grey[900],
@@ -181,7 +262,7 @@ class _DownloadsScreenState extends ConsumerState<DownloadsScreen> {
     );
   }
 
-  Widget _buildActionButtons(DownloadTask task) {
+  Widget _buildActionButtons(GenericTask task) {
     if (task.status == DownloadTaskStatus.undefined) {
       return const SizedBox.shrink();
     }
@@ -189,14 +270,14 @@ class _DownloadsScreenState extends ConsumerState<DownloadsScreen> {
     if (task.status == DownloadTaskStatus.running) {
        return IconButton(
          icon: const Icon(Icons.pause, color: Colors.amber),
-         onPressed: () => _pauseDownload(task.taskId),
+         onPressed: () => _pauseDownload(task),
        );
     } 
     
     if (task.status == DownloadTaskStatus.paused) {
       return IconButton(
         icon: const Icon(Icons.play_arrow, color: Colors.green),
-        onPressed: () => _resumeDownload(task.taskId),
+        onPressed: () => _resumeDownload(task),
       );
     }
     
@@ -206,11 +287,11 @@ class _DownloadsScreenState extends ConsumerState<DownloadsScreen> {
         children: [
            IconButton(
             icon: const Icon(Icons.play_circle_outline, color: Colors.red),
-            onPressed: () => _openDownload(task.taskId),
+            onPressed: () => _openDownload(task),
            ),
            IconButton(
              icon: const Icon(Icons.delete, color: Colors.grey),
-             onPressed: () => _deleteDownload(task.taskId),
+             onPressed: () => _deleteDownload(task),
            ),
         ],
       );
@@ -222,11 +303,11 @@ class _DownloadsScreenState extends ConsumerState<DownloadsScreen> {
          children: [
            IconButton(
              icon: const Icon(Icons.refresh, color: Colors.red),
-             onPressed: () => _retryDownload(task.taskId),
+             onPressed: () => _retryDownload(task),
            ),
             IconButton(
              icon: const Icon(Icons.delete, color: Colors.grey),
-             onPressed: () => _deleteDownload(task.taskId),
+             onPressed: () => _deleteDownload(task),
            ),
          ],
        );

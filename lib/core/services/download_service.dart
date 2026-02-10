@@ -1,4 +1,3 @@
-
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:ui';
@@ -7,11 +6,19 @@ import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:path/path.dart' as path;
+import 'hls_download_service.dart';
 
-final downloadServiceProvider = Provider<DownloadService>((ref) => DownloadService());
+final downloadServiceProvider = Provider<DownloadService>((ref) {
+  final hlsService = ref.watch(hlsDownloadServiceProvider);
+  return DownloadService(hlsService);
+});
 
 class DownloadService {
+  final HlsDownloadService _hlsService;
   final ReceivePort _port = ReceivePort();
+
+  DownloadService(this._hlsService);
 
   Future<void> initialize() async {
     await FlutterDownloader.initialize(
@@ -72,9 +79,18 @@ class DownloadService {
   Future<String?> downloadFile({
     required String url,
     required String fileName,
+    String? referer,
   }) async {
     final hasPermission = await requestPermission();
     if (!hasPermission) return null;
+
+    if (url.contains('.m3u8')) {
+      return await _hlsService.startDownload(
+        url: url, 
+        fileName: fileName,
+        referer: referer,
+      );
+    }
 
     final savedDir = await getSavedDir();
     if (savedDir == null) return null;
@@ -85,7 +101,7 @@ class DownloadService {
       fileName: fileName,
       showNotification: true,
       openFileFromNotification: true,
-      saveInPublicStorage: false, // Set to true if we want it in 'Downloads' folder (requires more permissions)
+      saveInPublicStorage: false, 
     );
     
     return taskId;
