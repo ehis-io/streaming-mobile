@@ -1,15 +1,24 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../models/media.dart';
 import '../../../models/stream_info.dart';
+import '../../../models/episode.dart';
 import '../../../core/network/api_client.dart';
 
-final streamsProvider = FutureProvider.family<List<StreamInfo>, Media>((ref, media) async {
+final tvDetailsProvider = FutureProvider.family<Media, int>((ref, id) async {
+  final client = ref.watch(apiClientProvider);
+  return client.getTvDetails(id);
+});
+
+final seasonDetailsProvider = FutureProvider.family<List<Episode>, ({int id, int season})>((ref, args) async {
+  final client = ref.watch(apiClientProvider);
+  return client.getSeasonDetails(args.id, args.season);
+});
+
+final streamsProvider = FutureProvider.family<List<StreamInfo>, ({Media media, int? season, int? episode})>((ref, args) async {
   final client = ref.watch(apiClientProvider);
   return client.getStreams(
-    media.id.toString(),
-    mediaType: media.mediaType?.name ?? (media.title != null ? 'movie' : 'tv'),
-    // For now we just fetch for movie or season 1 ep 1 for tv/anime
-    season: media.mediaType == MediaType.movie ? null : 1,
-    episode: media.mediaType == MediaType.movie ? null : 1,
+    args.media.id.toString(),
+    mediaType: args.media.mediaType?.name ?? (args.media.title != null ? 'movie' : 'tv'),
+    season: args.season,
+    episode: args.episode,
   );
 });

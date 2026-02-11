@@ -21,10 +21,9 @@ class StreamInfo {
   factory StreamInfo.fromJson(Map<String, dynamic> json) => _$StreamInfoFromJson(json);
   Map<String, dynamic> toJson() => _$StreamInfoToJson(this);
   bool get isEmbed {
-    // Check for explicit flag or common embed patterns
-    if (isM3U8 == false) return true;
+    if (isM3U8 == true) return false;
+    if (url.contains('.m3u8') || url.contains('.mp4')) return false;
     if (url.contains('/embed')) return true;
-    if (!url.endsWith('.m3u8') && !url.endsWith('.mp4')) return true;
-    return false;
+    return true;
   }
 }

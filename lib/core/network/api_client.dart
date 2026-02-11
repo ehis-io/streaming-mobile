@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/media.dart';
 import '../../models/stream_info.dart';
+import '../../models/episode.dart';
 
 final apiClientProvider = Provider((ref) => ApiClient());
 
@@ -144,6 +145,30 @@ class ApiClient {
   Future<Media> getMovieDetails(int id) async {
     final response = await _dio.get('/movies/$id');
     return Media.fromJson(response.data);
+  }
+
+  Future<Media> getTvDetails(int id) async {
+    final response = await _dio.get('/tv/$id');
+    return Media.fromJson(response.data);
+  }
+
+  Future<List<Episode>> getSeasonDetails(int id, int season) async {
+    final response = await _dio.get('/tv/$id/season/$season');
+    final List results = response.data['episodes'] ?? [];
+    final episodes = results.map((e) => Episode.fromJson(e)).toList();
+    
+    // Remove duplicates by episodeNumber (some shows have duplicate entries in TMDB)
+    final uniqueEpisodes = <int, Episode>{};
+    for (var episode in episodes) {
+      if (!uniqueEpisodes.containsKey(episode.episodeNumber)) {
+        uniqueEpisodes[episode.episodeNumber] = episode;
+      }
+    }
+    
+    // Convert back to list and sort episodes by episodeNumber to ensure correct order
+    final sortedEpisodes = uniqueEpisodes.values.toList();
+    sortedEpisodes.sort((a, b) => a.episodeNumber.compareTo(b.episodeNumber));
+    return sortedEpisodes;
   }
 
   Future<List<StreamInfo>> getStreams(

@@ -20,6 +20,8 @@ class DetailsScreen extends ConsumerStatefulWidget {
 class _DetailsScreenState extends ConsumerState<DetailsScreen> {
   bool _isInWatchlist = false;
   bool _isLoading = true;
+  int _selectedSeason = 1;
+  int _selectedEpisode = 1;
 
   @override
   void initState() {
@@ -68,7 +70,19 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final streams = ref.watch(streamsProvider(widget.media));
+    // If it's TV/Anime, we might want to fetch full details to get seasons
+    final isTV = widget.media.mediaType == MediaType.tv || widget.media.mediaType == MediaType.anime;
+    
+    AsyncValue<Media>? fullDetails;
+    if (isTV) {
+      fullDetails = ref.watch(tvDetailsProvider(widget.media.id));
+    }
+
+    final streams = ref.watch(streamsProvider((
+      media: widget.media,
+      season: isTV ? _selectedSeason : null,
+      episode: isTV ? _selectedEpisode : null,
+    )));
 
     return Scaffold(
       body: Stack(
@@ -89,7 +103,12 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => PlayerScreen(streams: links),
+                          builder: (context) => PlayerScreen(
+                            streams: links,
+                            media: widget.media,
+                            season: isTV ? _selectedSeason : null,
+                            episode: isTV ? _selectedEpisode : null,
+                          ),
                         ),
                       );
                     }
@@ -263,8 +282,8 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                                       builder: (context) => PlayerScreen(
                                         streams: links,
                                         media: widget.media,
-                                        season: widget.media.mediaType == MediaType.tv ? 1 : null,
-                                        episode: widget.media.mediaType == MediaType.tv ? 1 : null,
+                                        season: isTV ? _selectedSeason : null,
+                                        episode: isTV ? _selectedEpisode : null,
                                       ),
                                     ),
                                   );
@@ -326,6 +345,152 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                           ),
                         ),
                       ),
+                      const SizedBox(height: 32),
+                      if (isTV && fullDetails != null)
+                        fullDetails.when(
+                          data: (data) {
+                            final seasons = data.seasons?.where((s) => s.seasonNumber > 0).toList() ?? [];
+                            if (seasons.isEmpty) return const SizedBox.shrink();
+                            
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      'Episodes',
+                                      style: TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    DropdownButtonHideUnderline(
+                                      child: DropdownButton<int>(
+                                        value: _selectedSeason,
+                                        dropdownColor: Colors.grey[900],
+                                        style: const TextStyle(color: Colors.white, fontSize: 16),
+                                        items: seasons.map((s) => DropdownMenuItem(
+                                          value: s.seasonNumber,
+                                          child: Text('Season ${s.seasonNumber}'),
+                                        )).toList(),
+                                        onChanged: (val) {
+                                          if (val != null) {
+                                            setState(() {
+                                              _selectedSeason = val;
+                                              _selectedEpisode = 1;
+                                            });
+                                          }
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                Consumer(
+                                  builder: (context, ref, child) {
+                                    final episodes = ref.watch(seasonDetailsProvider((id: widget.media.id, season: _selectedSeason)));
+                                    return episodes.when(
+                                      data: (list) {
+                                        return ListView.builder(
+                                          shrinkWrap: true,
+                                          physics: const NeverScrollableScrollPhysics(),
+                                          itemCount: list.length,
+                                          itemBuilder: (context, index) {
+                                            final ep = list[index];
+                                            final isSelected = _selectedEpisode == ep.episodeNumber;
+                                            return ListTile(
+                                              contentPadding: EdgeInsets.zero,
+                                              leading: Container(
+                                                width: 100,
+                                                height: 56,
+                                                decoration: BoxDecoration(
+                                                  borderRadius: BorderRadius.circular(4),
+                                                  image: DecorationImage(
+                                                    image: NetworkImage(ep.stillUrl),
+                                                    fit: BoxFit.cover,
+                                                  ),
+                                                ),
+                                                child: isSelected ? Container(
+                                                  color: Colors.black45,
+                                                  child: const Icon(Icons.play_circle_fill, color: Colors.red, size: 30),
+                                                ) : null,
+                                              ),
+                                              title: Text(
+                                                '${ep.episodeNumber}. ${ep.name ?? 'Episode ${ep.episodeNumber}'}',
+                                                style: TextStyle(
+                                                  color: isSelected ? Colors.red : Colors.white,
+                                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                                ),
+                                              ),
+                                              subtitle: Text(
+                                                ep.airDate ?? '',
+                                                style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                                              ),
+                                              onTap: () async {
+                                                // Update selected episode first
+                                                setState(() {
+                                                  _selectedEpisode = ep.episodeNumber;
+                                                });
+                                                
+                                                // Wait for next frame to allow Riverpod to rebuild with new parameters
+                                                await Future.delayed(Duration.zero);
+                                                
+                                                // Now fetch fresh streams with the correct episode number
+                                                if (!mounted) return;
+                                                
+                                                try {
+                                                  final freshStreams = await ref.read(streamsProvider((
+                                                    media: widget.media,
+                                                    season: _selectedSeason,
+                                                    episode: _selectedEpisode,
+                                                  )).future);
+                                                  
+                                                  if (freshStreams.isNotEmpty) {
+                                                    final storage = ref.read(storageServiceProvider);
+                                                    await storage.addToHistory(widget.media);
+                                                    ref.invalidate(watchHistoryProvider);
+                                                    
+                                                    if (context.mounted) {
+                                                      Navigator.push(
+                                                        context,
+                                                        MaterialPageRoute(
+                                                          builder: (context) => PlayerScreen(
+                                                            streams: freshStreams,
+                                                            media: widget.media,
+                                                            season: _selectedSeason,
+                                                            episode: _selectedEpisode,
+                                                          ),
+                                                        ),
+                                                      );
+                                                    }
+                                                  } else {
+                                                    if (mounted) {
+                                                      AppSnackbar.show(context, message: 'No streams found for Episode ${_selectedEpisode}', type: SnackbarType.error);
+                                                    }
+                                                  }
+                                                } catch (e) {
+                                                  if (mounted) {
+                                                    AppSnackbar.show(context, message: 'Failed to load Episode ${_selectedEpisode}: $e', type: SnackbarType.error);
+                                                  }
+                                                }
+                                              },
+                                            );
+                                          },
+                                        );
+                                      },
+                                      loading: () => const Center(child: CircularProgressIndicator()),
+                                      error: (err, stack) => Text('Error loading episodes: $err', style: const TextStyle(color: Colors.red)),
+                                    );
+                                  },
+                                ),
+                              ],
+                            );
+                          },
+                          loading: () => const Center(child: CircularProgressIndicator()),
+                          error: (err, stack) => const SizedBox.shrink(),
+                        ),
                       const SizedBox(height: 100),
                     ],
                   ),

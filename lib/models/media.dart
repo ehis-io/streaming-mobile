@@ -12,6 +12,32 @@ enum MediaType {
 }
 
 @JsonSerializable()
+class Season {
+  @JsonKey(name: 'season_number')
+  final int seasonNumber;
+  @JsonKey(name: 'episode_count')
+  final int episodeCount;
+  final String? name;
+  final String? overview;
+  @JsonKey(name: 'poster_path')
+  final String? posterPath;
+  @JsonKey(name: 'air_date')
+  final String? airDate;
+
+  Season({
+    required this.seasonNumber,
+    required this.episodeCount,
+    this.name,
+    this.overview,
+    this.posterPath,
+    this.airDate,
+  });
+
+  factory Season.fromJson(Map<String, dynamic> json) => _$SeasonFromJson(json);
+  Map<String, dynamic> toJson() => _$SeasonToJson(this);
+}
+
+@JsonSerializable()
 class Media {
   final int id;
   final String? title;
@@ -29,6 +55,9 @@ class Media {
   final String? firstAirDate;
   @JsonKey(name: 'media_type')
   final MediaType? mediaType;
+  final List<Season>? seasons;
+  @JsonKey(name: 'number_of_seasons')
+  final int? numberOfSeasons;
 
   Media({
     required this.id,
@@ -41,6 +70,8 @@ class Media {
     this.releaseDate,
     this.firstAirDate,
     this.mediaType,
+    this.seasons,
+    this.numberOfSeasons,
   });
 
   String get displayTitle => title ?? name ?? 'Unknown';
@@ -70,6 +101,8 @@ class Media {
     String? releaseDate,
     String? firstAirDate,
     MediaType? mediaType,
+    List<Season>? seasons,
+    int? numberOfSeasons,
   }) {
     return Media(
       id: id ?? this.id,
@@ -82,6 +115,8 @@ class Media {
       releaseDate: releaseDate ?? this.releaseDate,
       firstAirDate: firstAirDate ?? this.firstAirDate,
       mediaType: mediaType ?? this.mediaType,
+      seasons: seasons ?? this.seasons,
+      numberOfSeasons: numberOfSeasons ?? this.numberOfSeasons,
     );
   }
 }

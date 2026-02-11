@@ -47,6 +47,26 @@ class HlsDownloadService {
     }
   }
 
+  Future<bool> pauseDownload(String id) async {
+    try {
+      final bool success = await _channel.invokeMethod('pauseDownload', {'id': id});
+      return success;
+    } on PlatformException catch (e) {
+      print('Failed to pause HLS download: ${e.message}');
+      return false;
+    }
+  }
+
+  Future<bool> resumeDownload(String id) async {
+    try {
+      final bool success = await _channel.invokeMethod('resumeDownload', {'id': id});
+      return success;
+    } on PlatformException catch (e) {
+      print('Failed to resume HLS download: ${e.message}');
+      return false;
+    }
+  }
+
   Future<bool> cancelDownload(String id) async {
     try {
       final bool success = await _channel.invokeMethod('cancelDownload', {'id': id});

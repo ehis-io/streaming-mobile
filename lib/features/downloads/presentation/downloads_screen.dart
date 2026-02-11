@@ -122,7 +122,7 @@ class _DownloadsScreenState extends ConsumerState<DownloadsScreen> {
       
       merged.add(GenericTask(
         taskId: t['id'],
-        filename: 'HLS Download', // We could pass filenames via native side later
+        filename: t['fileName'] ?? 'HLS Download',
         status: status,
         progress: t['progress'],
         isHls: true,
@@ -139,7 +139,7 @@ class _DownloadsScreenState extends ConsumerState<DownloadsScreen> {
   // Action handlers
   Future<void> _pauseDownload(GenericTask task) async {
     if (task.isHls) {
-      // HLS pause not implemented in native yet, but we could add it
+      await ref.read(hlsDownloadServiceProvider).pauseDownload(task.taskId);
     } else {
       await FlutterDownloader.pause(taskId: task.taskId);
     }
@@ -148,7 +148,7 @@ class _DownloadsScreenState extends ConsumerState<DownloadsScreen> {
 
   Future<void> _resumeDownload(GenericTask task) async {
     if (task.isHls) {
-      // HLS resume not implemented in native yet
+      await ref.read(hlsDownloadServiceProvider).resumeDownload(task.taskId);
     } else {
       await FlutterDownloader.resume(taskId: task.taskId);
     }
