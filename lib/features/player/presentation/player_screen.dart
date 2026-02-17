@@ -249,14 +249,56 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
   }
 
   void _onNextEpisode() {
-    if (_currentSeason != null && _currentEpisode != null) {
+    if (_currentSeason == null || _currentEpisode == null || widget.media?.seasons == null) return;
+
+    final seasons = widget.media!.seasons!.where((s) => s.seasonNumber > 0).toList();
+    seasons.sort((a, b) => a.seasonNumber.compareTo(b.seasonNumber));
+
+    final currentSeasonData = seasons.firstWhere(
+      (s) => s.seasonNumber == _currentSeason,
+      orElse: () => seasons.first,
+    );
+
+    if (_currentEpisode! < currentSeasonData.episodeCount) {
       _loadEpisode(_currentSeason!, _currentEpisode! + 1);
+    } else {
+      // Find next season
+      final nextSeasonIndex = seasons.indexOf(currentSeasonData) + 1;
+      if (nextSeasonIndex < seasons.length) {
+        final nextSeason = seasons[nextSeasonIndex];
+        _loadEpisode(nextSeason.seasonNumber, 1);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('You have reached the end of the series')),
+        );
+      }
     }
   }
 
   void _onPrevEpisode() {
-    if (_currentSeason != null && _currentEpisode != null && _currentEpisode! > 1) {
+    if (_currentSeason == null || _currentEpisode == null || widget.media?.seasons == null) return;
+
+    if (_currentEpisode! > 1) {
       _loadEpisode(_currentSeason!, _currentEpisode! - 1);
+    } else {
+      // Find previous season
+      final seasons = widget.media!.seasons!.where((s) => s.seasonNumber > 0).toList();
+      seasons.sort((a, b) => a.seasonNumber.compareTo(b.seasonNumber));
+      
+      final currentSeasonData = seasons.firstWhere(
+        (s) => s.seasonNumber == _currentSeason,
+        orElse: () => seasons.first,
+      );
+
+      final prevSeasonIndex = seasons.indexOf(currentSeasonData) - 1;
+      if (prevSeasonIndex >= 0) {
+        final prevSeason = seasons[prevSeasonIndex];
+        _loadEpisode(prevSeason.seasonNumber, prevSeason.episodeCount);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('You are at the beginning of the series')),
+        );
+      }
     }
   }
 

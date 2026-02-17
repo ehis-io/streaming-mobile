@@ -28,6 +28,10 @@ object DownloadUtil {
         urlHeaders[urlPart] = headers
     }
 
+    fun removeHeadersForUrl(urlPart: String) {
+        urlHeaders.remove(urlPart)
+    }
+
     @Synchronized
     fun getDatabaseProvider(context: Context): DatabaseProvider {
         if (databaseProvider == null) {

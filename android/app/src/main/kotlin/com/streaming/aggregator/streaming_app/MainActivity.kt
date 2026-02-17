@@ -45,6 +45,11 @@ class MainActivity : FlutterActivity() {
                 download.request.data?.let {
                     data["fileName"] = String(it, Charsets.UTF_8).split("|").lastOrNull() ?: "HLS Download"
                 }
+
+                if (download.state == Download.STATE_COMPLETED || download.state == Download.STATE_FAILED || download.state == Download.STATE_REMOVING) {
+                    val urlPart = download.request.uri.toString().substringBefore("?")
+                    DownloadUtil.removeHeadersForUrl(urlPart)
+                }
                 
                 flutterEngine?.dartExecutor?.binaryMessenger?.let {
                     MethodChannel(it, CHANNEL).invokeMethod("onDownloadUpdate", data)

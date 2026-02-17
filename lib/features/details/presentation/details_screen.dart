@@ -22,6 +22,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
   bool _isLoading = true;
   int _selectedSeason = 1;
   int _selectedEpisode = 1;
+  bool _isOpeningPlayer = false;
 
   @override
   void initState() {
@@ -100,6 +101,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                     ref.invalidate(watchHistoryProvider);
                     
                     if (context.mounted) {
+                      setState(() => _isOpeningPlayer = false);
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -113,6 +115,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                       );
                     }
                   } else {
+                    if (mounted) setState(() => _isOpeningPlayer = false);
                     AppSnackbar.show(context, message: 'No streams found', type: SnackbarType.error);
                   }
                 });
@@ -429,9 +432,14 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                                                 style: TextStyle(color: Colors.grey[400], fontSize: 12),
                                               ),
                                               onTap: () async {
+                                                if (_isOpeningPlayer) return;
+                                                
+                                                final targetEpisode = ep.episodeNumber;
+                                                
                                                 // Update selected episode first
                                                 setState(() {
-                                                  _selectedEpisode = ep.episodeNumber;
+                                                  _selectedEpisode = targetEpisode;
+                                                  _isOpeningPlayer = true;
                                                 });
                                                 
                                                 // Wait for next frame to allow Riverpod to rebuild with new parameters
@@ -444,7 +452,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                                                   final freshStreams = await ref.read(streamsProvider((
                                                     media: widget.media,
                                                     season: _selectedSeason,
-                                                    episode: _selectedEpisode,
+                                                    episode: targetEpisode,
                                                   )).future);
                                                   
                                                   if (freshStreams.isNotEmpty) {
@@ -453,6 +461,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                                                     ref.invalidate(watchHistoryProvider);
                                                     
                                                     if (context.mounted) {
+                                                      setState(() => _isOpeningPlayer = false);
                                                       Navigator.push(
                                                         context,
                                                         MaterialPageRoute(
@@ -460,19 +469,21 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                                                             streams: freshStreams,
                                                             media: widget.media,
                                                             season: _selectedSeason,
-                                                            episode: _selectedEpisode,
+                                                            episode: targetEpisode,
                                                           ),
                                                         ),
                                                       );
                                                     }
                                                   } else {
                                                     if (mounted) {
-                                                      AppSnackbar.show(context, message: 'No streams found for Episode ${_selectedEpisode}', type: SnackbarType.error);
+                                                      setState(() => _isOpeningPlayer = false);
+                                                      AppSnackbar.show(context, message: 'No streams found for Episode ${targetEpisode}', type: SnackbarType.error);
                                                     }
                                                   }
                                                 } catch (e) {
                                                   if (mounted) {
-                                                    AppSnackbar.show(context, message: 'Failed to load Episode ${_selectedEpisode}: $e', type: SnackbarType.error);
+                                                    setState(() => _isOpeningPlayer = false);
+                                                    AppSnackbar.show(context, message: 'Failed to load Episode ${targetEpisode}: $e', type: SnackbarType.error);
                                                   }
                                                 }
                                               },

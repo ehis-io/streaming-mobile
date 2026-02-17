@@ -157,10 +157,10 @@ class ApiClient {
     final List results = response.data['episodes'] ?? [];
     final episodes = results.map((e) => Episode.fromJson(e)).toList();
     
-    // Remove duplicates by episodeNumber (some shows have duplicate entries in TMDB)
+    // Filter out Episode 0 (specials) and remove duplicates by episodeNumber
     final uniqueEpisodes = <int, Episode>{};
     for (var episode in episodes) {
-      if (!uniqueEpisodes.containsKey(episode.episodeNumber)) {
+      if (episode.episodeNumber > 0 && !uniqueEpisodes.containsKey(episode.episodeNumber)) {
         uniqueEpisodes[episode.episodeNumber] = episode;
       }
     }
